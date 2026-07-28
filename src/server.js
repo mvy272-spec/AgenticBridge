@@ -258,6 +258,49 @@ async function handle(req, res) {
 </body></html>`);
   }
 
+  // SSE EVENTS
+  if (req.method === 'GET' && route === '/api/events') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    subscribers.add(res);
+    req.on('close', () => subscribers.delete(res));
+    return;
+  }
+
+  // DESKTOP CAPTURE
+  if (req.method === 'POST' && route === '/api/desktop/capture') {
+    const captures = path.join(ROOT, '.bridge_captures');
+    await fsp.mkdir(captures, { recursive: true });
+    const output = path.join(captures, `desktop-${Date.now()}.png`);
+    const psScript = path.join(__dirname, '../capture-screen.ps1');
+    if (!fs.existsSync(psScript)) {
+      await fsp.writeFile(psScript, `param($OutputPath)
+Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+$bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$graphics.Dispose(); $bitmap.Dispose()`);
+    }
+    await new Promise(r => execFile('powershell', ['-File', psScript, '-OutputPath', output], () => r()));
+    return json(res, 200, { ok: true, path: relative(output) });
+  }
+
+  // UNITY / GODOT
+  if (req.method === 'POST' && route === '/api/unity/launch') {
+    const { project, unityExe } = await readJson(req);
+    const child = spawn(unityExe, ['-projectPath', project], { detached: true });
+    child.unref();
+    return json(res, 202, { ok: true, pid: child.pid });
+  }
+
+  if (req.method === 'POST' && route === '/api/godot/launch') {
+    const { project, godotExe } = await readJson(req);
+    const child = spawn(godotExe, ['--path', project, '--editor'], { detached: true });
+    child.unref();
+    return json(res, 202, { ok: true, pid: child.pid });
+  }
+
   return json(res, 404, { ok: false, error: 'Unknown route' });
 }
 
