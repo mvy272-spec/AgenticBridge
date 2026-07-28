@@ -80,6 +80,16 @@ async function listDirectory(target) {
 }
 
 async function handle(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const route = url.pathname.replace(/\/$/, '') || '/';
+
+  // Dashboard без токена
+  if (req.method === 'GET' && route === '/dashboard') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<h1>AgenticBridge v4.2 MAX</h1><p>Running</p>`);
+    return;
+  }
+
   if (!authorized(req)) return json(res, 401, { ok: false, error: 'Invalid token' });
 
   const agentId = getAgentId(req);
